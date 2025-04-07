@@ -5,9 +5,12 @@ library(naniar)
 library(ggplot2)
 library(caret)
 
+
 #Load the test dataset
 housePrice <- read.csv("https://raw.githubusercontent.com/tblakearmstrong/SMU-MSDS/refs/heads/main/Stats%206371/Final%20Project/train.csv", header = TRUE)
 housePrice
+
+
 
 gg_miss_var(housePrice)
 
@@ -23,7 +26,9 @@ ggplot(data = housePrice1, aes(x=GrLivArea, y= SalePrice, color = Neighborhood))
 #Separate with interaction terms
 fit1_interaction = lm(SalePrice ~ GrLivArea*Neighborhood, data = housePrice1)
 summary(fit1_interaction)
+AIC(fit1_interaction)
 confint(fit1_interaction)
+
 
 #Generate diagnostic plots
 par(mfrow = c(2, 2))  
@@ -37,13 +42,21 @@ plot(fit1_interaction, which = 3)
 plot(fit1_interaction, which = 4)
 
 
-
-#### REDO IN THE MORNING
 #Leave one out cross-validation
-cv_method <- trainControl(method = "LOOCV")
-cv_fit1_interaction <- train(SalePrice ~ GrLivArea * Neighborhood,data = housePrice1, method = "lm", trControl = cv_method)
+cv_fit1_interaction <- train(SalePrice ~ GrLivArea * Neighborhood, data = housePrice1, method = "lm", trControl = trainControl(method = "LOOCV"))
 summary(cv_fit1_interaction)
 
+cv_fit1_interaction$finalModel
+cv_fit1_interaction$results
+
+#With outliers for summary stats
+housePrice2 = housePrice %>%
+  filter(Neighborhood %in% c('NAmes','BrkSide','Edwards'))
+housePrice2
+
+fit1_outliers = lm(SalePrice ~ GrLivArea*Neighborhood, data = housePrice2)
+summary(fit1_outliers)
+AIC(fit1_outliers)
 
 
 ###----------------------------------------- ANALYSIS 2 ---------------------------------------------------------------------------###
@@ -111,3 +124,15 @@ summary(best_final_model)
 
 
 ###Custom Multiple Linear Regression 
+autofit <- lm(SalePrice ~ .-SalePrice, data=housePrice_filtered)
+
+#Forward
+ols_step_forward_p(autofit, penter = 0.05, details = FALSE)
+
+#Backward
+ols_step_backward_p(autofit, prem = 0.05, details = TRUE)
+
+#Stepwise
+ols_step_both_p(autofit, penter = 0.05, prem = 0.05, details = FALSE)
+
+
