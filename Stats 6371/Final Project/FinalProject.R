@@ -18,6 +18,7 @@ testData
 gg_miss_var(housePrice)
 
 ###----------------------------------------- ANALYSIS 1 ---------------------------------------------------------------------------###
+#Take out outliers after confirming they are outliers
 housePrice1 = housePrice %>%
   filter(Neighborhood %in% c('NAmes','BrkSide','Edwards')
   ,GrLivArea < 3500)
@@ -45,13 +46,6 @@ plot(fit1_interaction, which = 3)
 plot(fit1_interaction, which = 4)
 
 
-#Leave one out cross-validation
-cv_fit1_interaction = train(SalePrice ~ GrLivArea * Neighborhood, data = housePrice1, method = "lm", trControl = trainControl(method = "LOOCV"))
-summary(cv_fit1_interaction)
-
-cv_fit1_interaction$finalModel
-cv_fit1_interaction$results
-
 #With outliers for summary stats
 housePrice2 = housePrice %>%
   filter(Neighborhood %in% c('NAmes','BrkSide','Edwards'))
@@ -64,8 +58,7 @@ AIC(fit1_outliers)
 
 ###----------------------------------------- ANALYSIS 2 ---------------------------------------------------------------------------###
 
-
-###Simple Linear Regression
+###Simple Linear Regression-----------------------------------------------------
 
 #Set the response variable and test variables
 response_var = "SalePrice"
@@ -112,10 +105,31 @@ best_model = model_results %>%
   head(3)
 print(best_model)
 
-#Fit the best model to the data
+##Input best from above into plots and model below
+#Linear assumption plot
+ggplot(data = housePrice, aes(x = OverallQual, y = SalePrice)) + geom_point(color = "blue") + ggtitle("Sales Price vs. Overall Quality of Property") + xlab("Overall Quality") + ylab("Sales Price ($)") +
+  geom_smooth(method = "lm", formula = y ~ x + I(x^2), color = "red", se = TRUE)
+
+
+#Fit the best model to the data w/o parabolic
+best_final_noquad = lm(SalePrice ~ OverallQual, data = housePrice)
+summary(best_final_noquad)
+AIC(best_final_noquad)
+confint(best_final_noquad)
+
+plot(best_final_noquad, which = 1)
+#Q-Q plot
+plot(best_final_noquad, which = 2)
+#Scale-Location plot
+plot(best_final_noquad, which = 3)
+# Cook's Distance plot
+plot(best_final_noquad, which = 4)
+
+#Fit the best model to the data w parabolic term
 best_final_model = lm(SalePrice ~ OverallQual + I(OverallQual^2), data = housePrice)
 summary(best_final_model)
 AIC(best_final_model)
+confint(best_final_model)
 
 #Generate diagnostic plots
 par(mfrow = c(2, 2))  
@@ -129,23 +143,53 @@ plot(best_final_model, which = 3)
 plot(best_final_model, which = 4)
 
 
+
+
 #Predict Test Data Sales Price
 SLR_predict = predict(customMLR, newdata = testData)
 SLR_results = cbind(testData, Predicted_SalePrice = customMLR_predict)
 head(SLR_results)
 
 
-###Multiple Linear Regression
+###Multiple Linear Regression---------------------------------------------------
+#Linear assumption plot GrLivArea
+ggplot(data = housePrice, aes(x = GrLivArea, y = SalePrice)) + geom_point(color = "red") + ggtitle("Sales Price vs. Living Area (SqFt)") + xlab("Living Area (SqFt)") + ylab("Sales Price ($)")
+
+#Linear assumption plot Full Bath
+ggplot(data = housePrice, aes(x = FullBath, y = SalePrice)) + geom_point(color = "blue") + ggtitle("Sales Price vs. Full Bathrooms") + xlab("Number of Full Baths") + ylab("Sales Price ($)")
+
+#Take out same outliers from GrLivArea same as Analysis 1
+housePriceMLR = housePrice %>%
+  filter(GrLivArea < 3500)
+housePriceMLR
+
+
+
+MLR_model = lm(SalePrice ~ GrLivArea + FullBath, data = housePriceMLR)
+summary(MLR_model)
+AIC(MLR_model)
+confint(MLR_model)
+
+#Generate diagnostic plots
+par(mfrow = c(2, 2))  
+#Residuals
+plot(MLR_model, which = 1)
+#Q-Q plot
+plot(MLR_model, which = 2)
+#Scale-Location plot
+plot(MLR_model, which = 3)
+# Cook's Distance plot
+plot(MLR_model, which = 4)
 
 
 #Predict Test Data Sales Price
+MLR_predict = predict(MLR_model, newdata = testData)
+MLR_results = cbind(testData, Predicted_SalePrice = MLR_predict)
+head(MLR_results)
 
 
 
-
-
-###Custom Multiple Linear Regression
-
+###Custom Multiple Linear Regression--------------------------------------------
 housePrice_numeric = housePrice %>%
   select_if(~ !is.character(.))
 str(housePrice_numeric)
