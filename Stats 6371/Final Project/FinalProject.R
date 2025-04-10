@@ -6,6 +6,7 @@ library(ggplot2)
 library(caret)
 library(Metrics)
 library(tidyverse)
+library(plotly)
 
 
 #Load the test dataset
@@ -149,11 +150,14 @@ plot(best_final_model, which = 4)
 SLR_predict = predict(customMLR, newdata = testData)
 SLR_results = cbind(testData, Predicted_SalePrice = customMLR_predict)
 head(SLR_results)
+#write.csv(PLACEHOLDER)
 
 
 ###Multiple Linear Regression---------------------------------------------------
 #Linear assumption plot GrLivArea
-ggplot(data = housePrice, aes(x = GrLivArea, y = SalePrice)) + geom_point(color = "red") + ggtitle("Sales Price vs. Living Area (SqFt)") + xlab("Living Area (SqFt)") + ylab("Sales Price ($)")
+pairs(housePrice_numeric[, c("SalePrice", "GrLivArea", "OverallQual")],
+      main = "Pairwise Scatterplots")
+
 
 #Linear assumption plot Full Bath
 ggplot(data = housePrice, aes(x = FullBath, y = SalePrice)) + geom_point(color = "blue") + ggtitle("Sales Price vs. Full Bathrooms") + xlab("Number of Full Baths") + ylab("Sales Price ($)")
@@ -186,13 +190,17 @@ plot(MLR_model, which = 4)
 MLR_predict = predict(MLR_model, newdata = testData)
 MLR_results = cbind(testData, Predicted_SalePrice = MLR_predict)
 head(MLR_results)
+#write.csv(PLACEHOLDER)
 
 
 
 ###Custom Multiple Linear Regression--------------------------------------------
 housePrice_numeric = housePrice %>%
-  select_if(~ !is.character(.))
+  select_if(~ !is.character(.)) %>%
+  filter(GrLivArea < 4000)
 str(housePrice_numeric)
+
+
 
 #Fit by each columns
 autofit <- lm(SalePrice ~ ., data=housePrice_numeric)
@@ -212,9 +220,25 @@ summary(stepwise_auto)
 
 
 #Take Top 2 continuous from SLR in Analysis 2
-customMLR = lm(SalePrice ~ OverallQual + I(OverallQual^2) + GrLivArea , data=housePrice)
+customMLR = lm(SalePrice ~ OverallQual + I(OverallQual^2) + GrLivArea , data=housePrice_numeric)
 summary(customMLR)
+confint(customMLR)
 AIC(customMLR)
+
+
+#Linear assumption plot
+ggplot(data = housePrice_numeric, aes(x=GrLivArea, y= SalePrice, color = OverallQual))+geom_point()+ggtitle("Sales Price vs. Living Area (SqFt) by Overall Qual")+xlab("Living Area (SqFt)") + ylab("Sales Price ($)")
+
+housePrice_numeric$Predicted = predict(customMLR)
+plot_ly(housePrice_numeric, x = ~OverallQual, y = ~GrLivArea, z = ~SalePrice,
+        type = "scatter3d", mode = "markers", marker = list(color = 'blue')) %>%
+  add_trace(z = ~Predicted, type = "mesh3d", opacity = 0.5) %>%
+  layout(title = "SalePrice ~ OverallQual + GrLivArea (MLR Fit)",
+         scene = list(
+           xaxis = list(title = "OverallQual"),
+           yaxis = list(title = "GrLivArea"),
+           zaxis = list(title = "SalePrice")
+         ))
 
 #Generate diagnostic plots
 par(mfrow = c(2, 2))  
@@ -231,3 +255,4 @@ plot(customMLR, which = 4)
 customMLR_predict = predict(customMLR, newdata = testData)
 customMLR_results = cbind(testData, Predicted_SalePrice = customMLR_predict)
 head(customMLR_results)
+#write.csv(PLACEHOLDER)
