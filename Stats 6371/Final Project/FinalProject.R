@@ -43,7 +43,7 @@ plot(fit1_interaction, which = 1)
 plot(fit1_interaction, which = 2)
 #Scale-Location plot
 plot(fit1_interaction, which = 3)
-# Cook's Distance plot
+#Cook's Distance plot
 plot(fit1_interaction, which = 4)
 
 
@@ -74,21 +74,19 @@ model_results = data.frame(
   stringsAsFactors = FALSE
 )
 
-# Loop through each predictor and run a regression
+#Loop through each predictor and run a regression
 for (predictor in predictors) {
   
-  # Construct the formula
+  #Dynamic formula
   formula = as.formula(paste(response_var, "~", predictor))
   
-  # Fit the linear model
+  #Model
   model = lm(formula, data = housePrice)
-  
-  # Get model metrics
   model_summary = summary(model)
   r_squared = model_summary$r.squared
   aic_value = AIC(model)
  
-   #Find RMSe
+  #Find RMSe
   predictions = predict(model, newdata = housePrice)
   rmse_value = rmse(housePrice[[response_var]], predictions)
   
@@ -118,12 +116,13 @@ summary(best_final_noquad)
 AIC(best_final_noquad)
 confint(best_final_noquad)
 
+#Residuals
 plot(best_final_noquad, which = 1)
 #Q-Q plot
 plot(best_final_noquad, which = 2)
 #Scale-Location plot
 plot(best_final_noquad, which = 3)
-# Cook's Distance plot
+#Cook's Distance plot
 plot(best_final_noquad, which = 4)
 
 #Fit the best model to the data w parabolic term
@@ -148,9 +147,9 @@ plot(best_final_model, which = 4)
 
 #Predict Test Data Sales Price
 SLR_predict = predict(customMLR, newdata = testData)
-SLR_results = cbind(testData, Predicted_SalePrice = customMLR_predict)
+SLR_results = data.frame(Id = testData$Id, SalePrice = SLR_predict)
 head(SLR_results)
-#write.csv(PLACEHOLDER)
+write.csv(SLR_results, "C:/Users/blake.armstrong/OneDrive - Vickery Energy/Desktop/MSDS/DS-6371 Stats/Final Project/SLR_Predictions.csv", row.names = FALSE)
 
 
 ###Multiple Linear Regression---------------------------------------------------
@@ -166,7 +165,6 @@ ggplot(data = housePrice, aes(x = FullBath, y = SalePrice)) + geom_point(color =
 housePriceMLR = housePrice %>%
   filter(GrLivArea < 3500)
 housePriceMLR
-
 
 
 MLR_model = lm(SalePrice ~ GrLivArea + FullBath, data = housePriceMLR)
@@ -188,9 +186,9 @@ plot(MLR_model, which = 4)
 
 #Predict Test Data Sales Price
 MLR_predict = predict(MLR_model, newdata = testData)
-MLR_results = cbind(testData, Predicted_SalePrice = MLR_predict)
+MLR_results = data.frame(Id = testData$Id, SalePrice = MLR_predict)
 head(MLR_results)
-#write.csv(PLACEHOLDER)
+write.csv(MLR_results, "C:/Users/blake.armstrong/OneDrive - Vickery Energy/Desktop/MSDS/DS-6371 Stats/Final Project/MLR_Predictions.csv", row.names = FALSE)
 
 
 
@@ -253,6 +251,6 @@ plot(customMLR, which = 4)
 
 #Predict Test Data Sales Price
 customMLR_predict = predict(customMLR, newdata = testData)
-customMLR_results = cbind(testData, Predicted_SalePrice = customMLR_predict)
+customMLR_results = data.frame(Id = testData$Id, SalePrice = customMLR_predict)
 head(customMLR_results)
-#write.csv(PLACEHOLDER)
+write.csv(customMLR_results, "C:/Users/blake.armstrong/OneDrive - Vickery Energy/Desktop/MSDS/DS-6371 Stats/Final Project/customMLR_Predictions.csv", row.names = FALSE)
