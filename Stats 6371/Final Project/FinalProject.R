@@ -149,7 +149,7 @@ plot(best_final_model, which = 4)
 SLR_predict = predict(customMLR, newdata = testData)
 SLR_results = data.frame(Id = testData$Id, SalePrice = SLR_predict)
 head(SLR_results)
-write.csv(SLR_results, "C:/Users/blake.armstrong/OneDrive - Vickery Energy/Desktop/MSDS/DS-6371 Stats/Final Project/SLR_Predictions.csv", row.names = FALSE)
+write.csv(SLR_results, "C:/Users/blake.armstrong/Desktop/MSDS/DS-6371 Stats/Final Project/SLR_Predictions.csv", row.names = FALSE)
 
 
 ###Multiple Linear Regression---------------------------------------------------
@@ -188,7 +188,7 @@ plot(MLR_model, which = 4)
 MLR_predict = predict(MLR_model, newdata = testData)
 MLR_results = data.frame(Id = testData$Id, SalePrice = MLR_predict)
 head(MLR_results)
-write.csv(MLR_results, "C:/Users/blake.armstrong/OneDrive - Vickery Energy/Desktop/MSDS/DS-6371 Stats/Final Project/MLR_Predictions.csv", row.names = FALSE)
+write.csv(MLR_results, "C:/Users/blake.armstrong/Desktop/MSDS/DS-6371 Stats/Final Project/MLR_Predictions.csv", row.names = FALSE)
 
 
 
@@ -253,4 +253,4 @@ plot(customMLR, which = 4)
 customMLR_predict = predict(customMLR, newdata = testData)
 customMLR_results = data.frame(Id = testData$Id, SalePrice = customMLR_predict)
 head(customMLR_results)
-write.csv(customMLR_results, "C:/Users/blake.armstrong/OneDrive - Vickery Energy/Desktop/MSDS/DS-6371 Stats/Final Project/customMLR_Predictions.csv", row.names = FALSE)
+write.csv(customMLR_results, "C:/Users/blake.armstrong/Desktop/MSDS/DS-6371 Stats/Final Project/customMLR_Predictions.csv", row.names = FALSE)
