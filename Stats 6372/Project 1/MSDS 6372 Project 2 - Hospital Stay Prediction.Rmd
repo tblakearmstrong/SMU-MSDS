@@ -1,0 +1,124 @@
+---
+title: 'MSDS 6371 Project 1: Hospital Stay MLR'
+author: "Tracy Dower & Blake Armstrong"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Dataset & Objectives
+
+This is an R Markdown document. For more information on the team and this analysis including the raw dataset, final presentation, and link to video presentation please visit the github repository <https://github.com/tblakearmstrong/SMU-MSDS/tree/main/Stats%206372/Project%201>.
+
+The team chose to analyze the provided dataset of hospital stays using 11 predictors collected from 113 different hospitals. There are two main objectives here that the team has set out to solve that we have outlined below:
+
+  **Objective 1:** This analysis is to determine whether a hospital's *__infection risk__* is significantly associated with the *__average length__* of patient stay, after accounting for other potentially influential factors. Using data from 113 hospitals—including variables such as patient age, number of nurses, hospital utilization, number of beds, and frequency of routine medical checks—we will construct a regression model to evaluate the impact of infection risk and related factors on hospital stay duration.
+  
+  **Objective 2:** The goal of this phase is to develop a predictive model that *__estimates patient length of stay as accurately as possible__*. Building on the initial regression model from Objective 1, we will fit two additional models:
+
+  1. A more *__complex Multiple Linear Regression (MLR)__* model that includes added features or interactions.
+
+    \Number two will need to be updated with the model that we went with\
+
+  2. A *__nonparametric model__*, such as k-Nearest Neighbors (KNN), a regression tree, or a random forest, utilizing tools available in the caret package.
+
+  3. All three models will be evaluated using an appropriate error metric (e.g., RMSE or MAE), and the results will be summarized in a comparison table. Based on model performance, a recommendation will be made regarding which model is best suited for predicting future patient hospital stays.
+
+
+### Exploratory Data Analysis (EDA)
+
+In EDA we attempt to visually identify trends and such that we can verify important insights and assumptions about the data.
+This process involves summarizing the main characteristics of a dataset, often using visual methods such as histograms, boxplots, scatter plots, and correlation matrices. EDA helps uncover underlying patterns, spot anomalies or outliers, test assumptions, and check the quality of the data. It is a crucial first step before applying any formal modeling techniques, as it guides data cleaning, feature selection, and the choice of analytical methods.
+
+First we want to upload the data and determine if there are any missing variables that we need to account for.  From the chart, it looks like the dataset we were provided is not missing any data points, and the corresponding summary and distributions can be observed as well.
+
+```{r datainput, echo =FALSE, message = FALSE, warning = FALSE}
+library(naniar)
+library(skimr)
+
+data.link <-"https://raw.githubusercontent.com/tblakearmstrong/SMU-MSDS/refs/heads/main/Stats%206372/Project%201/HospitalDurations.csv"
+hospital <- read.csv(data.link, header =TRUE)
+
+#Look at data
+skim(hospital)
+```
+
+
+Next, we want to look for trends between variables
+
+```{r pairs1, echo=FALSE, warning = FALSE, message = FALSE}
+library(GGally)
+
+#First half with length of stay
+ggpairs(hospital[,1:6])
+#plot(hospital)
+```
+```{r pairs2, echo=FALSE, warning = FALSE}
+library(GGally)
+
+#Second half with length of stay
+ggpairs(hospital[,c(2,7:11)])
+```
+
+
+
+## Objective 1: Infection Risk vs. Avg. Length of Stay
+```{r obj1, echo = FALSE, message = FALSE, warning = FALSE}
+library(car)
+model1 <- lm(data = hospital, Lgth.of.Sty ~., raw=TRUE)
+summary(model1)
+vif(model1)
+```
+
+
+```{r mlr1, echo = FALSE, message = FALSE, warning = FALSE}
+x=model.matrix(Lgth.of.Sty~.,hospital)[,-1]
+y=hospital$Lgth.of.Sty
+
+library(glmnet)
+set.seed(1234)
+
+cv.out=cv.glmnet(x,y,alpha=1)
+plot(cv.out)
+bestlambda<-cv.out$lambda.1se
+coef(cv.out,s=bestlambda)
+```
+
+```{r mlr2, echo =FALSE, message = FALSE, warning =FALSE}
+library(caret)
+library(glmnet)
+
+set.seed(1234)
+x<-hospital[,-2]
+y<-hospital[,2]
+
+temp.df <- data.frame(x, y)
+
+
+fitControl<-trainControl(method="repeatedcv",number=5, repeats=10) 
+
+glmnet.fit<-train(y~., raw=TRUE,
+               data=temp.df,
+               method="glmnet",
+               tuneGrid = expand.grid(alpha=1, lambda = seq(0,5, by = 0.1)),
+               trControl=fitControl)
+
+glmnet.fit
+plot(glmnet.fit)
+opt.pen<-glmnet.fit$finalModel$lambdaOpt
+coef(glmnet.fit$finalModel,opt.pen)
+
+```
+
+
+
+## Objective 2:
+#```{r model2, echo =FALSE, message = False, warning =FALSE}
+#```
+
+
+#```{r non-parametric, echo =FALSE, message = False, warning =FALSE}
+#knn
+```
