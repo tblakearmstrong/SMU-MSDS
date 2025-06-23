@@ -1,0 +1,323 @@
+---
+title: "Predicting Hospital Stay Duration"
+author: "Blake Armstrong and Tracy Dower"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Load libraries
+library(tidyverse)
+library(car)  
+library(caret)   
+# Set  colors
+hexBlue <- "#354CA1"
+hexRed <- "#CC0035" 
+hexGold <- "#DD923B"
+# Load and clean data
+setwd("C:/Users/tracy/OneDrive/Desktop/2 Stats/00 Project 1/")
+hospital <- read_csv("HospitalDurations.csv")
+# View(hospital)
+names(hospital) <- make.names(names(hospital))
+names(hospital)
+# Make Region a factor
+hospital$Region <- factor(hospital$Region, levels = 1:4, labels = c("NE", "NC", "S", "W"))
+hospital <- hospital %>% select(-ID)
+```
+#EDA
+```{r eda}
+# summary(hospital)
+# glimpse(hospital)
+# We cannot find any missing or nonsense values.
+# write_csv(hospital, "Cleaned_HospitalDurations.csv")
+vars <- c("Lgth.of.Sty", "Age", "Inf.Risk", "R.Cul.Rat", "R.CX.ray.Rat","N.Beds", "Med.Sc.Aff", "Region", "Avg.Pat", "Avg.Nur","Pct.Ser.Fac")
+# ggpairs(hospital[, vars])
+# ggplot(hospital, aes(x = InfRisk, y = Lgth.of.Sty)) +geom_boxplot() +labs(title = "Length of Stay by Region")
+
+sapply(hospital[vars], function(x) {
+  if (is.factor(x)) {
+    nlevels(x)            # number of factor levels
+  } else {
+    length(unique(x))  # number of unique values for numeric or character
+  }
+})
+table(hospital$Region)
+levels(hospital$Region)
+
+library(ggplot2)
+library(gridExtra)
+ 
+# p1<-ggplot(data=hospital,aes(x=Age,y=Inf.Risk,colour=Lgth.of.Sty))+geom_point()
+# p2<-ggplot(data=hospital,aes(x=Age,y=R.Cul.Rat,colour=Lgth.of.Sty))+geom_point()
+# p3<-ggplot(data=hospital,aes(x=Age,y=R.CX.ray.Rat,colour=Lgth.of.Sty))+geom_point()
+
+
+ggplot(data=hospital,aes(x=Inf.Risk,y=Lgth.of.Sty,colour=Region))+geom_point()
+ggplot(data=hospital,aes(x=R.Cul.Rat,y=Lgth.of.Sty,colour=Region))+geom_point()
+ggplot(data=hospital,aes(x=Age,y=Lgth.of.Sty,colour=Region))+geom_point()
+ggplot(data=hospital,aes(x=Inf.Risk,y=Lgth.of.Sty,colour=Age))+geom_point()
+ggplot(data=hospital,aes(x=log(Age),y=Lgth.of.Sty,colour=Inf.Risk))+geom_point()
+
+# grid.arrange(p1,p2,p3,nrow=1)
+
+# All variable combinations vs Lgth.of.Sty
+
+varAllPredictors <- c("Age", "Inf.Risk", "R.Cul.Rat", "R.CX.ray.Rat","N.Beds", "Avg.Pat", "Avg.Nur","Pct.Ser.Fac","Region")
+
+for (var in varAllPredictors) {
+  p <- ggplot(hospital, aes_string(x = var, y = "Lgth.of.Sty")) + geom_point() + geom_smooth(method = "lm", se = FALSE) + labs(title = paste("Lgth.of.Sty vs", var))
+  print(p)
+}
+```
+## Transformed and Derived Variables
+# Create Age bins -- not much juice here. NOt worth the squeeze.
+<!-- hospital <- hospital %>% -->
+<!--  mutate(AgeGroup = case_when( -->
+<!--  Age <= 18 ~ "Child", -->
+<!--  Age <= 32 ~ "Young", -->
+<!--  Age <= 65 ~ "Older", -->
+<!--  TRUE ~ "Elderly" -->
+<!--  )) -->
+
+<!-- # names(hospital) -->
+<!-- age_group_colors <- c("Young" = "#1f78b4", "Adult" = "#e31a1c", "Older" = "#33a02c", "Elderly" = "#33a02c") #  need one more color  -->
+
+<!-- Region_colors <- c("NE" = hexRed, "NC" = hexBlue, "S" = hexGold, "W" = hexGold)  #  need one more color  -->
+
+<!-- # Set factor levels for Region -->
+<!-- hospital$Region <- factor(hospital$Region, levels = c("F", "M", "I"), labels = c("Female", "Male", "Indeterminate")) -->
+
+<!-- ggplot(hospital, aes(x = Age, y = Lgth.of.Sty)) +geom_point(color = "blue") +labs(title = "Length of Stay vs Age",x = "Age",y = "Length of Stay") +theme_minimal() -->
+
+<!-- ggplot(hospital, aes(x = Age^2, y = Lgth.of.Sty, color = AgeGroup)) + geom_point() + labs(title = "Length of Stay vs Age", x = "", y = "Length of Stay") + theme_minimal() -->
+
+
+
+```{r transformations}
+hospital = hospital %>%
+ mutate(
+ ### Log-transformed terms
+	 log_Age = log(Age),
+	 log_InfectionRisk = log(Inf.Risk),
+	 log_NumBeds = log(N.Beds),
+	 log_Avg_Pat = log(Avg.Pat),
+	 log_Avg_Nur = log(Avg.Nur),
+	 log_R_Cul_RatAvg_Nur = log(R.Cul.Rat),
+	 log_Pct_Ser_Fac = log(Pct.Ser.Fac),
+ ### Squared terms
+	 InfectionRisk2 = Inf.Risk^2,
+	 NumBeds2 = N.Beds^2,
+	 Avg_Pat2 = Avg.Pat^2,
+	 Avg_Nur2 = Avg.Nur^2,
+	 R_Cul_Rat2 = R.Cul.Rat^2,
+	 Pct_Ser_Fac2 = Pct.Ser.Fac^2,
+ ### Cubic terms
+	 InfectionRisk3 = Inf.Risk^3,
+	 NumBeds3 = N.Beds^3,
+	 Avg_Pat3 = Avg.Pat^3,
+	 Avg_Nur3 = Avg.Nur^3,
+	 R_Cul_Rat3 = R.Cul.Rat^3,
+	 Pct_Ser_Fac3 = Pct.Ser.Fac^3,
+ ### Quartic terms
+	 InfectionRisk4 = Inf.Risk^4,
+	 NumBeds4 = N.Beds^4,
+	 Avg_Pat4 = Avg.Pat^4,
+	 Avg_Nur4 = Avg.Nur^4,
+	 R_Cul_Rat4 = R.Cul.Rat^4,
+	 Pct_Ser_Fac4 = Pct.Ser.Fac^4,
+ ### Interaction terms       maker RegionNum a numeric
+	 # regionInfection = Region * Inf.Risk,
+	 # regionBeds = Region * N.Beds,
+ # Scale UP: Base Variable Times 100
+	 InfectionRisk_c = Inf.Risk * 100,
+	 Age_c = Inf.Risk * 100,
+	 NumBeds_c = N.Beds * 100,
+	 Avg_Pat_c = Avg.Pat * 100,
+	 Avg_Nur_c = Avg.Nur * 100
+ )
+```
+
+### Outliers, Leverage, Cook's Distance
+```{r ouliers_leverage}
+
+# Outliers
+myFormula <- as.formula(paste("Lgth.of.Sty ~", paste(varAllPredictors, collapse = " + ")))
+myFormula
+fit_all <- lm(myFormula, data = hospital)
+influencePlot(fit_all, id.method = "identify", main = "Influence Plot")
+names(hospital)
+varAllPredictors # [1] "Age"          "Inf.Risk"     "R.Cul.Rat"    "R.CX.ray.Rat" "N.Beds"       "Avg.Pat"      "Avg.Nur"      "Pct.Ser.Fac"  "Region"  
+
+sapply(hospital[varAllPredictors], function(x) {
+  if (is.factor(x)) nlevels(x) else length(unique(x))
+})
+
+# Cook's Distance
+cooksd <- cooks.distance(fit_all)
+influential_points <- which(cooksd > 4 / nrow(hospital))
+print(influential_points)
+print(hospital[influential_points, ])
+
+
+```
+# Assumptions of Linear Regression -- Norm Inde Homo
+# Linear Model from Best Vars
+```{r MLR_objective1}
+varAllPredictors <- c("Age", "Inf.Risk", "R.Cul.Rat", "R.CX.ray.Rat","N.Beds", "Avg.Pat", "Avg.Nur","Pct.Ser.Fac","Region")
+
+myFormula <- as.formula(paste("Lgth.of.Sty ~", paste(varAllPredictors, collapse = " + ")))
+myFormula
+  
+set.seed(123)
+train_idx <- createDataPartition(hospital$Lgth.of.Sty, p = 0.8, list = FALSE)
+train <- hospital[train_idx, ]
+test <- hospital[-train_idx, ]
+
+model_Simple <- lm(myFormula, data = train)
+summary(model_Simple)
+vif(model_Simple)
+
+# High multicollinearity  N.Beds  and also Avg.Pat because both are measures of hospital SIZE.
+myPredictions  <- predict(model_Simple, newdata = test)
+mse_lm <- mean((myPredictions - test$Lgth.of.Sty)^2)
+mse_lm # MSE is  1.104911 -- not too shabby
+# Plot Diagnostics
+par(mfrow = c(2, 2))
+  plot(model_Simple)
+par(mfrow = c(1, 1))
+
+
+```
+### Again but without Number of Beds, because it has high multicollinearity with Average Patients
+```{r less-multicollinearity}
+# varBest <- c("Age", "Inf.Risk", "R.Cul.Rat", "R.CX.ray.Rat","N.Beds", "Avg.Pat", "Avg.Nur","Pct.Ser.Fac","Region")
+varBest <- c("Age", "Inf.Risk", "R.Cul.Rat", "R.CX.ray.Rat",          "Avg.Pat", "Avg.Nur","Pct.Ser.Fac","Region")  #  "N.Beds" already removed
+
+# varBest <- gsub("Region.*", "Region", varBest)
+# varBest <- unique(varBest)
+
+# Train/Test Split
+set.seed(123)
+train_idx <- createDataPartition(hospital$Lgth.of.Sty, p = 0.8, list = FALSE)
+train <- hospital[train_idx, ]
+test  <- hospital[-train_idx, ]
+
+myFormula <- as.formula(paste("Lgth.of.Sty ~", paste(varBest, collapse = " + ")))
+myFormula
+modelAvgPatient <- lm(myFormula, data = train)
+summary(modelAvgPatient)
+vif(modelAvgPatient)
+myPredictions  <- predict(modelAvgPatient, newdata = test)
+mse_modelAvgPatient <- mean((myPredictions - test$Lgth.of.Sty)^2)
+myFormula # Lgth.of.Sty ~ Age + Inf.Risk + R.Cul.Rat + R.CX.ray.Rat + N.Beds + Avg.Nur + Pct.Ser.Fac + Region
+mse_modelAvgPatient # MSE is  1.123121 -- also not bad at all
+summary(hospital)
+
+```
+
+### Now we add interactions between each of our Numeric variables and each of our categorical variables.
+```{r interactions}
+# Reload for a simplified dataset since none of the log/square/cube/etc. seemed useful.
+hospital <- read_csv("HospitalDurations.csv")
+names(hospital) <- make.names(names(hospital))
+names(hospital)
+# Make Region a factor
+hospital$Region <- factor(hospital$Region, levels = 1:4, labels = c("NE", "NC", "S", "W"))
+hospital <- hospital %>% select(-ID)
+
+
+numeric_vars <- c("Age", "Inf.Risk", "R.Cul.Rat", "R.CX.ray.Rat", "N.Beds", "Avg.Pat", "Avg.Nur", "Pct.Ser.Fac")
+categorical_vars <- c("Region", "Med.Sc.Aff")
+
+# Create interaction terms
+for (num_var in numeric_vars) {
+  for (cat_var in categorical_vars) {
+    interaction_name <- paste0(num_var, "_x_", cat_var)
+    hospital[[interaction_name]] <- hospital[[num_var]] * as.numeric(hospital[[cat_var]])
+
+  }
+}
+# names(hospital)
+
+all_predictors <- setdiff(names(hospital), c("Lgth.of.Sty", "ID"))  # remove target and any ID columns
+mlr_interations_all_formula <- as.formula(paste("Lgth.of.Sty ~", paste(all_predictors, collapse = " + ")))
+
+# Train/test split (if not already done)
+set.seed(123)
+train_idx <- createDataPartition(hospital$Lgth.of.Sty, p = 0.8, list = FALSE)
+train <- hospital[train_idx, ]
+test <- hospital[-train_idx, ]
+
+# Fit model
+mlr_interations_all <- lm(mlr_interations_all_formula, data = train)
+summary(mlr_interations_all)
+
+mse_mlr_interations_all <- mean((myPredictions - test$Lgth.of.Sty)^2)
+mse_mlr_interations_all  # So, all that complexity, and as expected, we LOSE precision, MSE= 1.123121
+```
+#### Feature Selection to reduce cpmplexity and improve fit. 
+```{r feature-selection}
+# Stepwise Selection 
+## Won't run because too much multicollinearity between many of the interaction variables so I simplified.
+# SimplerFormula <- Lgth.of.Sty ~ Age + Inf.Risk + R.Cul.Rat + R.CX.ray.Rat +  
+#   Med.Sc.Aff + Region + Avg.Pat + Avg.Nur + Pct.Ser.Fac + 
+#   Age_x_Region + Inf.Risk_x_Region + R.Cul.Rat_x_Region + R.CX.ray.Rat_x_Region + 
+#   N.Beds_x_Region + Avg.Pat_x_Region + Avg.Nur_x_Region + Pct.Ser.Fac_x_Region
+ #  MSE = 1.044064 but Many of above variables have very high p-values! So I simplified:
+
+SimplerFormula <- Lgth.of.Sty ~ Age + Inf.Risk + Avg.Pat + Avg.Nur + Inf.Risk_x_Region + Avg.Pat_x_Region + Avg.Nur_x_Region
+
+model_simpler <- lm(SimplerFormula, data = train)
+summary(model_simpler)
+
+pred_simpler <- predict(model_simpler, newdata = test)
+mse_simpler <- mean((pred_simpler - test$Lgth.of.Sty)^2)
+rmse_simpler <- sqrt(mse_simpler)
+rmse_simpler #  MSE = 0.9877123
+
+
+# LASSO
+library(glmnet)
+
+# Prepare data for glmnet (model.matrix drops NAs and handles factors)
+X <- model.matrix(mlr_interations_all_formula, data = train)[,-1]  # remove intercept
+y <- train$Lgth.of.Sty
+
+# Cross-validated LASSO (alpha = 1)
+set.seed(123)
+lasso_cv <- cv.glmnet(X, y, alpha = 1)
+plot(lasso_cv)
+
+# Best lambda and model
+best_lambda <- lasso_cv$lambda.min
+lasso_model <- glmnet(X, y, alpha = 1, lambda = best_lambda)
+coef(lasso_model)
+
+# Predict and evaluate
+X_test <- model.matrix(mlr_interations_all_formula, data = test)[,-1]
+pred_lasso <- predict(lasso_model, s = best_lambda, newx = X_test)
+mse_lasso <- mean((pred_lasso - test$Lgth.of.Sty)^2)
+mse_lasso # Meh. Not great.
+
+final_formula <- Lgth.of.Sty ~ Age + Inf.Risk + Avg.Pat + Region + Inf.Risk_x_Region +  R.CX.ray.Rat_x_Med.Sc.Aff + Avg.Nur_x_Med.Sc.Aff + Pct.Ser.Fac_x_Region
+model_final <- lm(final_formula, data = train)
+summary(model_final)
+
+pred_final <- predict(model_final, newdata = test)
+rmse_final <- sqrt(mean((pred_final - test$Lgth.of.Sty)^2))
+rmse_final # Dramatically less good than the MLR from a few steps ago. So, no!
+
+# Bootstrap RMSE
+library(boot)
+rmse_fun <- function(data, indices) {
+  d <- data[indices, ]
+  model <- lm(mlr_interations_all_formula, data = d)
+  pred <- predict(model, newdata = test)
+  sqrt(mean((pred - test$Lgth.of.Sty)^2))
+}
+set.seed(123)
+boot_rmse <- boot(hospital, statistic = rmse_fun, R = 1000)
+boot.ci(boot_rmse, type = c("basic", "perc", "bca"))
+
+
+```
