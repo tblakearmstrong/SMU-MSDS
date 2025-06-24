@@ -1,0 +1,769 @@
+---
+title: 'MSDS 6371 Project 1: Hospital Stay MLR'
+author: "Tracy Dower & Blake Armstrong"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Dataset & Objectives
+
+This is an R Markdown document. For more information on the team and this analysis including the raw dataset, final presentation, and link to video presentation please visit our GitHub repository <https://github.com/tblakearmstrong/SMU-MSDS/tree/main/Stats%206372/Project%201>.
+
+The team chose to analyze the provided dataset of hospital data that contains 11 predictors collected from 113 different hospitals. There are two main objectives here that the team has set out to solve that we have outlined below:
+
+  **Objective 1:** This analysis is to determine whether a hospital's *__infection risk__* is significantly associated with the *__average length__* of patient stay, after accounting for other potentially influential factors. Using data from 113 hospitals—including variables such as patient age, number of nurses, hospital utilization, number of beds, and frequency of routine medical checks—we will construct a regression model to evaluate the impact of infection risk and related factors on hospital stay duration.
+  
+  **Objective 2:** The goal of this phase is to develop a predictive model that *__estimates patient length of stay as accurately as possible__*. Building on the initial regression model from Objective 1, we will fit two additional models:
+
+  1. A more *__complex Multiple Linear Regression (MLR)__* model that includes added features or interactions with either Med School Affiliation or Hospital Region.
+
+  2. A *__nonparametric model__*, in which we used a random forest with 500 trees.
+
+  3. All three models will be evaluated using an appropriate error metric (e.g., RMSE or MAE), and the results will be summarized in a comparison table. Based on model performance, a recommendation will be made regarding which model is best suited for predicting future patient hospital stays.
+
+
+### Exploratory Data Analysis (EDA)
+
+In EDA we attempt to visually identify trends and such that we can verify important insights and assumptions about the data.
+This process involves summarizing the main characteristics of a dataset, often using visual methods such as histograms, boxplots, scatter plots, and correlation matrices. EDA helps uncover underlying patterns, spot anomalies or outliers, test assumptions, and check the quality of the data. It is a crucial first step before applying any formal modeling techniques, as it guides data cleaning, feature selection, and the choice of analytical methods.
+
+First we want to upload the data and determine if there are any missing variables that we need to account for.  From the chart, it looks like the dataset we were provided is not missing any data points, and the corresponding variable summaries and value histograms can be observed as well:
+
+```{r datainput, echo =FALSE, message = FALSE, warning = FALSE}
+library(naniar)
+library(skimr)
+library(dplyr)
+
+set.seed(123)
+
+data.link <-"https://raw.githubusercontent.com/tblakearmstrong/SMU-MSDS/refs/heads/main/Stats%206372/Project%201/HospitalDurations.csv"
+hospital <- read.csv(data.link, header =TRUE)
+
+hospital <- hospital %>% 
+  mutate(across(everything(), log, .names = "log_{.col}") %>% 
+  select(-1,-8,-9))
+
+#Look at data
+skim.hospital <- hospital %>%
+  select(-matches("log", ignore.case = TRUE)) %>%
+  rename(
+    "Length of Stay" = Lgth.of.Sty,
+    "Infection Risk" = Inf.Risk,
+    "Routine Culturing Ratio" = R.Cul.Rat,
+    "Routine Chest X-Ray Ratio" = R.CX.ray.Rat,
+    "No. of Beds" = N.Beds,
+    "Med School Affiliation" = Med.Sc.Aff,
+    "Average Patients" = Avg.Pat,
+    "Average Full Time Nurses" = Avg.Nur,
+    "Percent Facility Utilization" = Pct.Ser.Fac
+  )
+
+skim(skim.hospital)
+```
+
+Next, we want to look for trends between our response variable and the predictor variables:
+
+  **Linear-Linear Plots:** From the plots below, there looks to be decent clustering in a couple of the plots therefore we will explore transforming them to see how trends change.  Additionally, two predictors, "Med School Affiliation" and "Region" could be treated as categorical variables, however there is an observed trend in Region that we would consider not treating it as such.  
+
+```{r testplots, echo = FALSE, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+set.seed(123)
+
+response <- "Lgth.of.Sty"
+predictors <- c("Age", "Inf.Risk", "R.Cul.Rat", "R.CX.ray.Rat", "N.Beds", "Avg.Pat", "Avg.Nur", "Pct.Ser.Fac", "Med.Sc.Aff", "Region")
+
+label_map <- c(
+  Age = "Patient Age",
+  Inf.Risk = "Infection Risk",
+  R.Cul.Rat = "Routine Culturing Ratio",
+  R.CX.ray.Rat = "Routine Chest X-Ray Ratio",
+  N.Beds = "Number of Beds",
+  Avg.Pat = "Average No. of Patients",
+  Avg.Nur = "Average Nurses Employed",
+  Pct.Ser.Fac = "% of Available Facilities",
+  Med.Sc.Aff = "Med School Affiliation",
+  Region = "Hospital Region"
+)
+
+plot_data <- hospital %>%
+  select(all_of(c(response, predictors))) %>%
+  pivot_longer(cols = all_of(predictors), names_to = "Predictor", values_to = "Value")
+
+ggplot(plot_data, aes(x = Value, y = .data[[response]])) +
+  geom_smooth(method = "lm", color = "steelblue", se = TRUE) +
+  geom_point(color = "darkblue", alpha = 0.6) +
+  facet_wrap(~ Predictor, scales = "free_x", ncol = 5,
+             labeller = labeller(Predictor = label_map)) +
+  theme_minimal() +
+  labs(
+    x = NULL,
+    y = "Length of Stay",
+    title = "Length of Stay vs. Predictors"
+  )+
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  )
+```
+
+
+
+  **Log-Linear Plots:**  In these plots, we logged the response variable "Length of Stay" vs. the rest of the parameters, and didn't notice any change in distributions of the charts.
+  
+```{r testplots2, echo=FALSE, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+set.seed(123)
+
+response <- "log_Lgth.of.Sty"
+predictors <- c("Age", "Inf.Risk", "R.Cul.Rat", "R.CX.ray.Rat", "N.Beds", "Avg.Pat", "Avg.Nur", "Pct.Ser.Fac", "Med.Sc.Aff", "Region")
+
+label_map <- c(
+  Age = "Patient Age",
+  Inf.Risk = "Infection Risk",
+  R.Cul.Rat = "Routine Culturing Ratio",
+  R.CX.ray.Rat = "Routine Chest X-Ray Ratio",
+  N.Beds = "Number of Beds",
+  Avg.Pat = "Average No. of Patients",
+  Avg.Nur = "Average Nurses Employed",
+  Pct.Ser.Fac = "% of Available Facilities",
+  Med.Sc.Aff = "Med School Affiliation",
+  Region = "Hospital Region"
+)
+
+plot_data <- hospital %>%
+  select(all_of(c(response, predictors))) %>%
+  pivot_longer(cols = all_of(predictors), names_to = "Predictor", values_to = "Value")
+
+ggplot(plot_data, aes(x = Value, y = .data[[response]])) +
+  geom_smooth(method = "lm", color = "steelblue", se = TRUE) +
+  geom_point(color = "darkred", alpha = 0.6) +
+  facet_wrap(~ Predictor, scales = "free_x", ncol = 5,
+             labeller = labeller(Predictor = label_map)) +
+  theme_minimal() +
+  labs(
+    x = NULL,
+    y = "Log(Length of Stay)",
+    title = "log(Length of Stay) vs. Predictors"
+  )+
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  )
+```
+
+
+
+  **Linear-Log Plots:** In these, we logged the predictor variables except for the two variables "Med School Affiliation" and "Region" since they didn't have distributions that required it. In these plots we can observe more of a linear trend forming between a majority, if not all predictors. We will analyze the models using these logged predictors.
+  
+```{r testplots3, echo = FALSE, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+set.seed(123)
+
+response <- "Lgth.of.Sty"
+predictors <- c("log_Age", "log_Inf.Risk", "log_R.Cul.Rat", "log_R.CX.ray.Rat", "log_N.Beds", "log_Avg.Pat", "log_Avg.Nur", "log_Pct.Ser.Fac", "Med.Sc.Aff", "Region")
+
+label_map <- c(
+  "log_Age" = "Patient Age",
+  "log_Inf.Risk" = "Infection Risk",
+  "log_R.Cul.Rat" = "Routine Culturing Ratio",
+  "log_R.CX.ray.Rat" = "Routine Chest X-Ray Ratio",
+  "log_N.Beds" = "Number of Beds",
+  "log_Avg.Pat" = "Average No. of Patients",
+  "log_Avg.Nur" = "Average Nurses Employed",
+  "log_Pct.Ser.Fac" = "% of Available Facilities",
+  Med.Sc.Aff = "Med School Affiliation",
+  Region = "Hospital Region"
+)
+
+plot_data <- hospital %>%
+  select(all_of(c(response, predictors))) %>%
+  pivot_longer(cols = all_of(predictors), names_to = "Predictor", values_to = "Value")
+
+ggplot(plot_data, aes(x = Value, y = .data[[response]])) +
+  geom_smooth(method = "lm", color = "steelblue", se = TRUE) +
+  geom_point(color = "darkmagenta", alpha = 0.6) +
+  facet_wrap(~ Predictor, scales = "free_x", ncol = 5,
+             labeller = labeller(Predictor = label_map)) +
+  theme_minimal() +
+  labs(
+    x = NULL,
+    y = "Length of Stay",
+    title = "Length of Stay vs. log(Predictors)"
+  )+
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  )
+```
+
+
+
+  **Log-Log Plots:** These plots don't appear to exhibit a different trend from the Linear-Log, and therefore we won't utilize the log-log for Objective 1 since we will lose inference on the mean.
+  
+```{r testplots4, echo = FALSE, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+set.seed(123)
+
+response <- "log_Lgth.of.Sty"
+predictors <- c("log_Age", "log_Inf.Risk", "log_R.Cul.Rat", "log_R.CX.ray.Rat", "log_N.Beds", "log_Avg.Pat", "log_Avg.Nur", "log_Pct.Ser.Fac", "Med.Sc.Aff", "Region")
+
+label_map <- c(
+  "log_Age" = "Patient Age",
+  "log_Inf.Risk" = "Infection Risk",
+  "log_R.Cul.Rat" = "Routine Culturing Ratio",
+  "log_R.CX.ray.Rat" = "Routine Chest X-Ray Ratio",
+  "log_N.Beds" = "Number of Beds",
+  "log_Avg.Pat" = "Average No. of Patients",
+  "log_Avg.Nur" = "Average Nurses Employed",
+  "log_Pct.Ser.Fac" = "% of Available Facilities",
+  Med.Sc.Aff = "Med School Affiliation",
+  Region = "Hospital Region"
+)
+
+plot_data <- hospital %>%
+  select(all_of(c(response, predictors))) %>%
+  pivot_longer(cols = all_of(predictors), names_to = "Predictor", values_to = "Value")
+
+ggplot(plot_data, aes(x = Value, y = .data[[response]])) +
+  geom_smooth(method = "lm", color = "steelblue", se = TRUE) +
+  geom_point(color = "darkcyan", alpha = 0.6) +
+  facet_wrap(~ Predictor, scales = "free_x", ncol = 5,
+             labeller = labeller(Predictor = label_map)) +
+  theme_minimal() +
+  labs(
+    x = NULL,
+    y = "log(Length of Stay)",
+    title = "log(Length of Stay) vs. log(Predictors)"
+  )+
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  )
+```
+
+
+
+
+## Objective 1: Avg. Length of Stay vs. Infection Risk
+
+  As stated previously in the introduction, the goal of Objective 1 is to determine whether a hospital's *__infection risk__* is significantly associated with the *__average length__* of patient stay, after accounting for other potentially influential factors.
+  
+  We will use automatic feature selection techniques such as lasso method, and stepwise functions (forward, backward, both) in addition to traditional multiple linear regression with all predictors to determine statistical significance of infection rate on average hospital stay duration while accounting for the other variables.
+  
+  First we created a model with all of the non-transformed variables to statistically confirm relationships that we saw in the graphs previously when holding all other predictors constant.
+  
+  
+#### **Model 1:**
+```{r obj1.1, echo = FALSE, message = FALSE, warning = FALSE}
+library(dplyr)
+library(car)
+library(gtsummary)
+library(tibble)
+
+set.seed(123)
+
+response <- "Lgth.of.Sty"
+#Predictors that ignore logged predictors
+
+hospital$Region <- as.factor(hospital$Region)
+
+predictors_1 <- names(hospital) %>%
+  setdiff(response) %>%
+  setdiff(grep("ID|log|Lgth", names(hospital), ignore.case = TRUE, value = TRUE))
+
+predictors <- c(predictors_1, "Region")
+
+#Model
+model1 <- lm(data = hospital, formula = as.formula(paste(response, "~", paste(predictors_1, collapse = "+"))))
+
+#Parameter Estimate
+parameter_table_1 <- tbl_regression(model1, conf.level = 0.95, estimate_fun = ~style_number(.x, digits = 3),
+                      pvalue_fun = ~style_pvalue(.x, digits = 3),
+                      intercept = TRUE)|> add_vif()
+parameter_table_1
+
+```
+
+
+
+
+ **Model 1 Linear Predictors RMSE:**
+```{r obj1.1 rmse, echo = FALSE, warning = FALSE, message=FALSE}
+#Train/Test/Validation
+library(caret)
+set.seed(123)
+train_control <- trainControl(method="repeatedcv",number=5, repeats=10)
+model1.train <- train(as.formula(paste(response, "~", predictors)), data=hospital, trControl=train_control, method="lm")
+model1.train
+```
+
+
+  **AIC of Model 1:**
+```{r obj1.1 AIC,echo = FALSE, message = FALSE, warning = FALSE }
+AIC1.1<-AIC(model1.train$finalModel)
+print(AIC1.1)
+```
+
+
+
+Similar to the linear-linear plots we can see clustering on the lower range of x-values for a majority of the predictors, which indicates that the transformations we contemplated could be necessary.
+
+```{r obj1.1 res, echo = FALSE, message = FALSE, warning = FALSE}
+#Plot Residual Data
+par(mfrow= c(2,2))
+plot(model1)
+```
+
+ **Outlier Analysis, Leverage, Cook's Distance**
+```{r ouliers_leverage, warning = FALSE, echo = FALSE}
+library(car)
+# Outliers
+influencePlot(model1, id.method = "identify", main = "Influence Plot")
+#sapply(hospital[predictors], function(x) {
+#  if (is.factor(x)) nlevels(x) else length(unique(x))
+#})
+
+# Cook's Distance
+cooksd <- cooks.distance(model1)
+influential_points <- which(cooksd > 4 / nrow(hospital))
+#print(influential_points)
+#print(hospital[influential_points, ])
+```
+
+
+
+From the plot we can see that there are few points with higher Cook's D but their leverage is insignificant.  There is a point that has a large leverage but it is within bounds of the studentized residuals and therefore we chose to not address any outliers since there aren't any that would severely bust our modeling.
+
+
+Next we ran a model with the logged predictors to determine if the observed higher linear trend were more statistically significant when holding all other parameters constant. what we found is that the AIC for this model is higher than the linear-linear model.
+
+#### **Model 2:**
+
+```{r obj1.2, echo = FALSE, message = FALSE, warning = FALSE}
+library(dplyr)
+library(car)
+
+set.seed(123)
+
+response <- "Lgth.of.Sty"
+
+#Predictors that only chooses logged variables
+predictors <- names(hospital) %>%
+  grep("log", ., ignore.case = TRUE, value = TRUE) %>%
+  setdiff(grep("ID|Lgth|length", ., ignore.case = TRUE, value = TRUE)) %>%
+  setdiff(response)
+
+
+predictors <- c(predictors, "Region")
+
+model2 <- lm(data = hospital, formula = as.formula(paste(response, "~", paste(predictors, collapse = "+"))))
+
+parameter_table <- tbl_regression(model2, conf.level = 0.95, estimate_fun = ~style_number(.x, digits = 3),
+                      pvalue_fun = ~style_pvalue(.x, digits = 3),
+                      intercept = TRUE)|> add_vif()
+parameter_table
+```
+
+
+ **Model 2 Logged Predictors RMSE:**
+```{r obj1.2 rmse, echo = FALSE, warning = FALSE, message=FALSE}
+#Train/Test/Validation
+train_control <- trainControl(method="repeatedcv",number=5, repeats=10)
+model2.train <- train(as.formula(paste(response, "~", predictors)), data=hospital, trControl=train_control, method="lm")
+model2.train
+```
+
+
+  **AIC of Model 2:**
+```{r AIC2, echo= FALSE}
+AIC1.2 <- AIC(model2.train$finalModel)
+AIC1.2
+```
+
+
+As you can see from these residuals they are more random and more of a random point cloud and less clustered, but the AIC is hardly any better than the non log transformed variables. However we there aren't any identifiable outliers that we would need to address in this approach as well.
+
+```{r obj1.2 res, echo=FALSE, warning=FALSE, message=FALSE}
+#Plot Residual Data
+par(mfrow= c(2,2))
+plot(model2)
+```
+
+
+#### **Automatic Feature Selection**
+  **Feature Selection of Linear-Linear: Lasso Method** The team chose to use the lasso function recently learned in MSDS 6372 to find the optimal penalty term and automatically select the predictor terms which are below:
+
+```{r mlr1, echo = FALSE, message = FALSE, warning = FALSE}
+set.seed(123)
+
+predictors <- names(hospital) %>%
+  setdiff(grep("log|Lgth|ID", names(hospital), ignore.case = TRUE, value = TRUE))
+
+#Model
+formula <- as.formula(paste("Lgth.of.Sty ~", paste(predictors, collapse = " + ")))
+x <- model.matrix(formula, data = hospital)[,-1]
+y=hospital$Lgth.of.Sty
+
+library(glmnet)
+set.seed(1234)
+
+cv.out=cv.glmnet(x,y,alpha=1)
+plot(cv.out)
+bestlambda<-cv.out$lambda.1se
+coef(cv.out,s=bestlambda)
+```
+
+
+  **Automatic Feature Selection of Linear-Log: Lasso Method**
+
+```{r mlr2, echo = FALSE, message = FALSE, warning = FALSE}
+library(dplyr)
+library(glmnet)
+
+set.seed(123)
+
+#Response
+response <- "Lgth.of.Sty"
+
+#Predictors
+predictors <- names(hospital) %>%
+  grep("log",., names(hospital), ignore.case = TRUE, value = TRUE) %>% 
+   setdiff(grep("Lgth|ID", ., ignore.case = TRUE, value = TRUE))
+
+predictors <- c(predictors, "Region")
+
+#Model
+formula <- as.formula(paste("Lgth.of.Sty ~", paste(predictors, collapse = " + ")))
+x <- model.matrix(formula, data = hospital)[,-1]
+y=hospital$Lgth.of.Sty
+
+#Auto Selection
+library(glmnet)
+set.seed(1234)
+
+cv.out=cv.glmnet(x,y,alpha=1)
+plot(cv.out)
+bestlambda<-cv.out$lambda.1se
+coef(cv.out,s=bestlambda)
+```
+
+
+```{r forward, echo=FALSE, message=FALSE, warning = FALSE}
+#  **Forward Selection**
+#library(olsrr)
+
+#set.seed(123)
+
+#names(hospital) <- gsub("\\(|\\)", "_", names(hospital))
+#names(hospital) <- gsub("__", "_", names(hospital)) 
+#
+##Response
+#response <- "Lgth.of.Sty"
+#
+##Predictors that only choose logged variables
+#predictors <- names(hospital) %>%
+#  grep("log", ., ignore.case = TRUE, value = TRUE) %>%
+#  setdiff(grep("Lgth", ., ignore.case = TRUE, value = TRUE)) %>%
+#  setdiff(response)
+#
+#predictors <- c(predictors, "Region")
+#
+##Model formula from response vs. predictors above
+#formula <- as.formula(paste(response, "~", paste(predictors, collapse = " + ")))
+#
+##Stepwise Model
+#stepwise <- lm(formula ,data = hospital)
+#
+##Forward
+#ols_step_forward_p(stepwise, p_val = 0.05, details = FALSE)
+```
+
+
+```{r step_backward, echo=FALSE, message=FALSE, warning = FALSE}
+#  **Backward Selection**
+#set.seed(123)
+#
+##Stepwise Backward Selection
+#ols_step_backward_p(stepwise, p_val = 0.05, details = FALSE)
+```
+
+
+```{r stepwise, echo=FALSE, message=FALSE, warning = FALSE}
+#  **Stepwise Feature Selection**
+#library(caret)
+##Stepwise
+#set.seed(123)
+#
+##Stepwise Both Selection
+#ols_step_both_p(stepwise, p_enter = 0.05, p_remove = 0.05, details = FALSE)
+```
+
+After multiple iterations and methods of feature selection on the logged and unlogged variables, they all came up with same/similar answers for statistically significant predictors. To run our final model we utilized Age, Infection Risk, Chest XRay Ratio, Average Patients (removed number of beds as these two were very highly correlated), Average Nurse Count, and the Region of the hospital.
+
+Our final simple MLR model is as below:
+
+## Final Model -- Simple
+
+  **Final Parameter Table Summary:**
+```{r final.model, echo = FALSE, message = FALSE, warning = FALSE}
+library(dplyr)
+library(car)
+library(caret)
+
+set.seed(123)
+
+response <- "Lgth.of.Sty"
+predictors1 <- "log_Age + log_Inf.Risk + log_R.CX.ray.Rat + log_Avg.Pat + log_Avg.Nur + Region"
+predictors2 <- "Age + Inf.Risk + R.CX.ray.Rat + Avg.Pat + Avg.Nur + Region"
+
+final.model <- lm(as.formula(paste(response, "~", predictors2)), data=hospital)
+
+parameter_table <- tbl_regression(final.model, conf.level = 0.95, estimate_fun = ~style_number(.x, digits = 3),
+                      pvalue_fun = ~style_pvalue(.x, digits = 3),
+                      intercept = TRUE)|> add_vif()
+parameter_table
+```
+
+
+  **Residual Plots:**
+  
+```{r final.residuals, echo = FALSE}
+#Plot Data
+par(mfrow= c(2,2))
+plot(final.model)
+```
+
+
+ **Final Model Validation Statistics:**
+```{r final.validation, echo = FALSE, warning = FALSE, message=FALSE}
+#Train/Test/Validation
+train_control <- trainControl(method="repeatedcv",number=5, repeats=10)
+final.model.train <- train(as.formula(paste(response, "~", predictors2)), data=hospital, trControl=train_control, method="lm")
+final.model.train
+```
+
+
+  **AIC of Final Model:**
+```{r AIC_final, echo= FALSE}
+AIC1 <- AIC(final.model.train$finalModel)
+AIC1
+```
+  
+  
+  
+##### **Objective 1 Summary: ** A multiple linear regression model was developed to examine the relationship between a dependent variable and six predictors: age, infection risk, chest X-ray ratio, average patient count, average nurse, and region.
+
+All predictors in the model yield statistically significant p-values (typically p < ~0.05), indicating that each variable contributes meaningfully to the model when considered independently and most do not contain zero in the confidence interval adding to that conclusion.  Additionally by using feature selection and simplifying the model, we dropped nearly 100 points in AIC vs. a full linear or full logged transformed models.
+
+
+
+
+
+
+
+
+
+
+
+## Objective 2: Advanced Modeling
+
+As stated previously in the introduction, the goal of Objective 2 is to determine whether a hospital's *__infection risk__* is significantly associated with the *__average length__* of patient stay, after accounting for other potentially influential factors. The difference in this model from Objective 1 is that we will add complexity to the model by testing Hospital Region and/or Med School Affiliation as interaction terms to determine if they have impact on length of hospital stay when accounted for.
+  
+  We will use automatic feature selection techniques such as lasso method, and stepwise functions (forward, backward, both) in addition to traditional multiple linear regression with all predictors to determine statistical significance of infection rate on average hospital stay duration while accounting for the other variables.
+  
+  
+ **List of all interactions to predict Avg. Hospital Stay**
+```{r interactions, warnings = FALSE, echo = FALSE}
+library(dplyr)
+library(caret)
+library(car)
+library(gtsummary)
+
+set.seed(123)
+
+# Make Region a factor
+data.link <-"https://raw.githubusercontent.com/tblakearmstrong/SMU-MSDS/refs/heads/main/Stats%206372/Project%201/HospitalDurations.csv"
+hospital <- read.csv(data.link, header =TRUE)
+hospital$Region <- factor(hospital$Region, levels = 1:4, labels = c("NE", "NC", "S", "W"))
+hospital <- hospital %>% select(-ID)
+
+
+numeric_vars <- c("Age", "Inf.Risk", "R.Cul.Rat", "R.CX.ray.Rat", "N.Beds", "Avg.Pat", "Avg.Nur", "Pct.Ser.Fac")
+categorical_vars <- c("Region", "Med.Sc.Aff")
+
+# Create interaction terms
+for (num_var in numeric_vars) {
+  for (cat_var in categorical_vars) {
+    interaction_name <- paste0(num_var, "_x_", cat_var)
+    hospital[[interaction_name]] <- hospital[[num_var]] * as.numeric(hospital[[cat_var]])
+
+  }
+}
+
+#names(hospital)
+
+all_predictors <- setdiff(names(hospital), c("Lgth.of.Sty", "ID"))  # remove target and any ID columns
+all_predictors
+```
+
+
+
+ **Parameter Estimate Table of All Predictors & Interactions:**
+```{r complex_all_interactions, echo = FALSE, warning = FALSE, message = FALSE}
+mlr_interactions_all_formula <- as.formula(paste("Lgth.of.Sty ~", paste(all_predictors, collapse = " + ")))
+
+# Train/test split (if not already done)
+set.seed(123)
+train_idx <- createDataPartition(hospital$Lgth.of.Sty, p = 0.8, list = FALSE)
+train <- hospital[train_idx, ]
+test <- hospital[-train_idx, ]
+
+# Fit model
+mlr_interactions_all <- lm(mlr_interactions_all_formula, data = train)
+myPredictions <- predict(mlr_interactions_all, newdata = test)
+
+#summary(full_model)
+parameter_table <- tbl_regression(mlr_interactions_all, conf.level = 0.95, estimate_fun = ~style_number(.x, digits = 3),
+                      pvalue_fun = ~style_pvalue(.x, digits = 3),
+                      intercept = TRUE)|> add_vif()
+parameter_table
+mse_mlr_interactions_all <- mean((myPredictions - test$Lgth.of.Sty)^2)
+rmse_mlr_interactions_all <- sqrt(mse_mlr_interactions_all)  # So, all that complexity, and as expected, we LOSE precision, MSE= 1.123121
+```
+    
+    
+As we can see from the parameter estimate table we have a mixture of statistically insignificant interactions as well as really high VIF between parameters. Therefore we will utilize the Lasso method to help simplify the predictors and increase statistical performance.  Please note, we are not as concerned with VIFs here since we added interaction terms, they are not additive to the model and are adding complexity within the existing parameters. 
+    
+    
+#### **Automatic Feature Selection to Reduce Complexity and Ideally Improve Fit: Lasso Method** 
+  
+```{r complex_glmnet, echo=FALSE, message=FALSE, warning=FALSE}
+# LASSO
+library(glmnet)
+
+# Prepare data for glmnet (model.matrix drops NAs and handles factors)
+X <- model.matrix(mlr_interactions_all_formula, data = train)[,-1]  #remove intercept
+y <- train$Lgth.of.Sty
+
+# Cross-validated LASSO (alpha = 1)
+set.seed(123)
+lasso_cv <- cv.glmnet(X, y, alpha = 1)
+plot(lasso_cv)
+
+# Best lambda and model
+best_lambda <- lasso_cv$lambda.min
+lasso_model <- glmnet(X, y, alpha = 1, lambda = best_lambda)
+coef(lasso_model)
+
+# Predict and evaluate
+X_test <- model.matrix(mlr_interactions_all_formula, data = test)[,-1]
+pred_lasso <- predict(lasso_model, s = best_lambda, newx = X_test)
+mse_lasso <- mean((pred_lasso - test$Lgth.of.Sty)^2)
+cat("Mean Squared Error on Test Set:", mse_lasso, "\n") # Meh. Not great.
+rmse_lasso <- sqrt(mse_lasso)
+cat("Root Mean Squared Error on Test Set:", rmse_lasso, "\n")
+```
+
+
+
+  **Resulting Parameter Table from Lasso Method:** Here we can see that even though we simplified our model, we still have a few predictors that are statistically insignificant.
+
+```{r lasso_final_formula, echo=FALSE, message = FALSE, warning = FALSE}
+final_formula <- Lgth.of.Sty ~ Age + Inf.Risk + Avg.Pat + Region + Inf.Risk_x_Region +  R.CX.ray.Rat_x_Med.Sc.Aff + Avg.Nur_x_Med.Sc.Aff + Pct.Ser.Fac_x_Region
+model_final <- lm(final_formula, data = train)
+summary(model_final)
+
+pred_final <- predict(model_final, newdata = test)
+rmse_final <- sqrt(mean((pred_final - test$Lgth.of.Sty)^2))
+# rmse_final Dramatically less good than the MLR from a few steps ago. So, no!
+cat("Mean Squared Error on Test Set:", rmse_final^2, "\n")
+cat("Root Mean Squared Error on Test Set:", rmse_final, "\n")
+
+# Bootstrap RMSE
+#library(boot)
+#rmse_fun <- function(data, indices) {
+#  d <- data[indices, ]
+#  model <- lm(mlr_interactions_all_formula, data = d)
+#  pred <- predict(model, newdata = test)
+#  sqrt(mean((pred - test$Lgth.of.Sty)^2))
+#}
+#set.seed(123)
+#boot_rmse <- boot(hospital, statistic = rmse_fun, R = 1000)
+#boot.ci(boot_rmse, type = c("basic", "perc", "bca"))
+```
+ 
+ **Simpler Equation Using Refined Parameters:**  Since a few of the previous predictors were statistically insignificant, we dropped those out and reran our model with the remainder.  From the RMSE comparison on the validation set, we increase performance greatly by dropping out the statistically insignificant parameters and produced our best model yet according to RMSE.
+ 
+```{r feature-selection, warning = FALSE, message = FALSE, echo = FALSE}
+SimplerFormula <- Lgth.of.Sty ~ Age + Inf.Risk + Avg.Pat + Avg.Nur + Inf.Risk_x_Region + Avg.Pat_x_Region + Avg.Nur_x_Region
+
+model_simpler <- lm(SimplerFormula, data = train)
+summary(model_simpler)
+
+pred_simpler <- predict(model_simpler, newdata = test)
+mse_simpler <- mean((pred_simpler - test$Lgth.of.Sty)^2)
+rmse_simpler <- sqrt(mse_simpler)
+#rmse_simpler  MSE = 0.9877123
+
+cat("Mean Squared Error on Test Set:", mse_simpler, "\n")
+cat("Root Mean Squared Error on Test Set:", rmse_simpler, "\n")
+```
+
+
+
+#### **Non-Parametric Model: Random Forrest (Avg. Hospital Stay vs. Infection Rate)**
+
+```{r non-parametric, echo = FALSE, warning = FALSE, message = FALSE} 
+library(randomForest)
+library(tidyverse)
+library(caret)
+
+#Reset data table
+data.link <-"https://raw.githubusercontent.com/tblakearmstrong/SMU-MSDS/refs/heads/main/Stats%206372/Project%201/HospitalDurations.csv"
+hospital <- read.csv(data.link, header =TRUE)
+
+#Predictors
+nonpar_predictors <- names(hospital) %>%
+   setdiff(grep("Log|ID|Region.Fact", ., ignore.case = TRUE, value = TRUE))
+
+
+nonpar_data <- hospital[, nonpar_predictors]
+
+#Split data into training and testing
+set.seed(123)
+trainIndex <- createDataPartition(nonpar_data$Lgth.of.Sty, p = 0.8, list = FALSE)
+trainData <- nonpar_data[trainIndex, ]
+testData <- nonpar_data[-trainIndex, ]
+
+#Train RF
+set.seed(123)
+rf_model <- randomForest(Lgth.of.Sty ~ ., data = trainData, importance = TRUE, ntree = 500)
+
+#Print model summary
+print(rf_model)
+
+#Variable importance plot
+varImpPlot(rf_model, main = "Variable Importance")
+
+#Predict on test set
+predictions <- predict(rf_model, newdata = testData)
+
+#Model performance
+mse <- mean((predictions - testData$Lgth.of.Sty)^2)
+cat("Mean Squared Error on Test Set:", mse, "\n")
+
+rmse <- sqrt(mse)
+cat("Root Mean Squared Error on Test Set:", rmse, "\n")
+
+```
