@@ -1,0 +1,515 @@
+---
+title: "Project 2 - MSDS 6372: Applied Statistics: Bank Marketing Dataset"
+author: "Eric Graham & Blake Armstrong"
+date: "2025-08-09"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Update all below
+
+# Dataset & Objectives
+This is an R Markdown document. For more information on the team and this analysis including the raw dataset, final presentation, and link to video presentation please visit our GitHub repository: <https://github.com/tblakearmstrong/SMU-MSDS/tree/main/Stats%206372/Project%202>.
+
+Additionally the raw link to the datasource is below.
+
+<https://archive.ics.uci.edu/dataset/222/bank+marketing>.
+
+The team chose to analyze the provided dataset of bank data that contains 16 predictors collected from thousands of clients, nine (9) of which are categorical and seven (7) are continuous. There are two main objectives here that the team has set out to solve that we have outlined below:
+
+**Objective 1:** This analysis is to interpret the coefficients using multiple logistic regression to determine whether a bank customer subscribed to a term deposit or not  *__y__*.  This model will be built based off the takeaways and trends observed during exploratory data analysis and our intuition.
+
+**Objective 2:** The goal of this phase is to develop a predictive model that *__predicts whether or not a customer will subscribe to a term deposit__*. In addition to the first objective, we will be building and analyzing four additional models:
+
+
+  1. A more *__complex Multiple Logistic Regression (MLR)__* model that includes added features or interactions or polynomial terms.
+
+  2. A *__nonparametric model__*, in which we used a random forest with 100 number of trees.
+  
+  3. An LDA model
+  
+  4. A QDA model
+  
+
+  All of the models in the second objective will be evaluated using an appropriate error metric <DETERMINE WHICH ERROR METRICS MATTER THE MOST IN THIS ASPECT (e.g., RMSE or MAE)>, and the results will be summarized in a comparison table. Based on model performance, a recommendation will be made regarding which model is best suited for classifying whether or not a customer will make a deposit at the bank.
+
+
+# Exploratory Data Analysis (EDA)
+
+In EDA we attempt to visually identify trends and such that we can verify important insights and assumptions about the data.
+This process involves summarizing the main characteristics of a dataset, often using visual methods such as histograms, boxplots, scatter plots, and correlation matrices. EDA helps uncover underlying patterns, spot anomalies or outliers, test assumptions, and check the quality of the data. It is a crucial first step before applying any formal modeling techniques, as it guides data cleaning, feature selection, and the choice of analytical methods.
+
+
+```{r data, echo=FALSE, message=F, warning=F}
+library(naniar)
+library(skimr)
+library(dplyr)
+
+link <- "https://raw.githubusercontent.com/tblakearmstrong/SMU-MSDS/refs/heads/main/Stats%206372/Project%202/bank-full.csv"
+link2 <- "https://raw.githubusercontent.com/tblakearmstrong/SMU-MSDS/refs/heads/main/Stats%206372/Project%202/bank-additional-full.csv"
+bank <- read.csv(link2, header =TRUE, sep=";")  #Pulling in the additional full currently
+names(bank)
+skim(bank)
+```
+
+
+```{r pca, message=FALSE}
+numeric.df <- bank[ , sapply(bank, is.numeric)]
+
+library(GGally)
+pc.result<-prcomp(numeric.df,scale=TRUE)
+pc.df <- data.frame(PC1 = pc.result$x[, 1],
+                    PC2 = pc.result$x[, 2],
+                    PC3 = pc.result$x[, 3],
+                    PC4 = pc.result$x[, 4],
+                    PC5 = pc.result$x[, 5],
+                    y = bank$y)
+
+ggpairs(pc.df, aes(color=y))
+
+#Scree Plot
+eigenvals <- pc.result$sdev^2
+
+#Scree plot
+par(mfrow=c(1,2))
+plot(eigenvals,type="l",main="Scree Plot",ylab="Eigen Values",xlab="PC #")
+plot(eigenvals/sum(eigenvals),type="l",main="Scree Plot",ylab="Prop. Var. Explained",xlab="PC #",ylim=c(0,1))
+cumulative.prop<-cumsum(eigenvals/sum(eigenvals))
+lines(cumulative.prop,lty=2)
+
+
+#Eigen Vectors
+pc.result$rotation
+```
+
+
+```{r eda_cat, echo=F, message=F, warning=F}
+library(ggplot2)
+library(GGally)
+library(tidyr)
+
+response <- "y"
+bank$response_num <- ifelse(bank$y == "yes",1,0)
+cat_predictors <- c("job", "marital", "education", "default", "housing", "loan", "contact", "month", "poutcome")
+
+#Percent Success Overall:
+bank %>%
+  group_by(y) %>% 
+  summarise(cnt = n()) %>%
+  mutate(perc = round(cnt / sum(cnt), 4)) %>%
+  ggplot(aes(x = y, y = perc, fill =y)) +
+  geom_bar(stat = "identity") +
+  labs(y = "Proportion of Subscription",x = NULL,title = "Proportion of Subscriptions") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme_minimal()
+
+#Percent Success by Job:
+bank %>%
+  group_by(job) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(job, success_rate), y = success_rate, fill = job)) +
+  geom_col() + labs(y = "% Success (y == 'yes')", x = "Job", title = "Subscription Rate by Job") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+#Percent Marital
+bank %>%
+  group_by(marital) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(marital, success_rate), y = success_rate, fill = marital)) +
+  geom_col() + labs(y = "% Success", x = "Marital", title = "Subscription Rate by Marital Status") +
+  theme(legend.position = "none")
+
+#Percent Education
+bank %>%
+  group_by(education) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(education, success_rate), y = success_rate, fill = education)) +
+  geom_col() + labs(y = "% Success", x = "Education", title = "Subscription Rate by Education") +
+  theme(legend.position = "none")
+
+#Percent Default
+bank %>%
+  group_by(default) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(default, success_rate), y = success_rate, fill = default)) +
+  geom_col() + labs(y = "% Success", x = "Default", title = "Subscription Rate by Credit Default Status") +
+  theme(legend.position = "none")
+
+#Percent Housing Loan
+bank %>%
+  group_by(housing) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(housing, success_rate), y = success_rate, fill = housing)) +
+  geom_col() + labs(y = "% Success", x = "Housing", title = "Subscription Rate by Housing Loan Status") +
+  theme(legend.position = "none")
+
+#Percent Personal Loan
+bank %>%
+  group_by(loan) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(loan, success_rate), y = success_rate, fill = loan)) +
+  geom_col() + labs(y = "% Success", x = "Loan", title = "Subscription Rate by Personal Loan Status") +
+  theme(legend.position = "none")
+
+#Percent Contact Type
+bank %>%
+  group_by(contact) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(contact, success_rate), y = success_rate, fill = contact)) +
+  geom_col() + labs(y = "% Success", x = "Contact", title = "Subscription Rate by Contact Type") +
+  theme(legend.position = "none")
+
+#Percent Month
+bank %>%
+  group_by(month) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(month, success_rate), y = success_rate, fill = month)) +
+  geom_col() + labs(y = "% Success", x = "Month", title = "Subscription Rate by Month") +
+  theme(legend.position = "none")
+
+#Previous Campaign Success Percent
+bank %>%
+  group_by(poutcome) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(poutcome, success_rate), y = success_rate, fill = poutcome)) +
+  geom_col() + labs(y = "% Success", x = "Previous Outcome", title = "Subscription Rate by Previous Campaign Outcome") +
+  theme(legend.position = "none")
+
+#Look at binning Campaign and eurIbor
+
+#Europe Ibor Success Percent
+bank <- bank %>%
+  mutate(euribor3m_cat = case_when(
+    euribor3m < 2 ~ "Low",
+    euribor3m >= 2 & euribor3m < 4 ~ "Medium",
+    euribor3m >= 4 ~ "High"
+  ))
+
+bank %>%
+  group_by(euribor3m_cat) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(euribor3m_cat, success_rate), y = success_rate, fill = euribor3m_cat)) +
+  geom_col() + labs(y = "% Success", x = "Eur Ibor Category", title = "Subscription Rate by Euro Interbank Offered Rate (3M)") +
+  theme(legend.position = "none")
+
+
+#Campaign contacts Success Percent
+bank <- bank %>%
+  mutate(campaign_bin = case_when(
+    campaign == 0 ~ "None",
+    campaign == 1 ~ "One",
+    campaign >= 2 ~ "Two+"
+  ))
+
+
+bank %>%
+  group_by(campaign_bin) %>%
+  summarise(success_rate = mean(y == "yes") * 100) %>%
+  ggplot(aes(x = reorder(campaign_bin, success_rate), y = success_rate, fill = campaign_bin)) +
+  geom_col() + labs(y = "% Success", x = "Previous Outcome", title = "Subscription Rate by Number of Current Campaign Contacts") +
+  theme(legend.position = "none")
+
+```
+
+```{r eda_cont, message=F, warning=F}
+library(GGally)
+library(dplyr)
+library(tidyr)
+
+response <- "y"
+bank$response_num <- ifelse(bank$y == "yes",1,0)
+cont_predictors <- c("age", "duration", "pdays", "campaign", "previous", "emp.var.rate", "cons.price.idx", "cons.conf.idx", "euribor3m", "nr.employed")
+log_cont_predictors <- c("age", "log_duration", "log_campaign", "log_pdays", "log_emp.var.rate", "log_cons.price.idx", "log_cons.conf.idx", "log_nr.employed")
+poly_cont_predictors <- c("poly_age", "poly_duration", "poly_campaign", "poly_pdays", "poly_previous", "poly_emp.var.rate",
+                         "poly_cons.price.idx", "poly_cons.conf.idx", "poly_nr.employed")
+
+#Loess/Scatter Plots of Numeric Predictors
+#for (var in names(bank)) {
+#  if (is.numeric(bank[[var]]) && var != "response_num") {
+#    
+#    p <- ggplot(bank, aes_string(x = var, y = "response_num")) + geom_jitter(height = 0.05, width = 0, alpha = 0.5, aes(color=y)) +
+#      geom_smooth(method = "loess", size = 1, span = 1, se=FALSE, color = "black") +
+#      labs(title = paste("LOESS Curve: Subscription Outcome vs", var),
+#           x = var,
+#           y = "Probability of Subscription")
+#    print(p)
+#  }
+#}
+
+pair_data <- bank %>%
+  dplyr::select(all_of(c(response, cont_predictors)))
+ggpairs(pair_data,mapping = aes(color = .data[[response]]))
+
+
+###--------------Logarithmic transforms to look, does look like it would've fixed duration, comment out for now-----------------###
+##Log transform the skewed columns
+#bank_log <- bank %>%
+#  dplyr::mutate(
+#    log_duration = log(duration),
+#    log_campaign = log(campaign),
+#    log_pdays = log(pdays),
+#    log_emp.var.rate = log(emp.var.rate),
+#    log_cons.price.idx = log(cons.price.idx),
+#    log_cons.conf.idx = log(-cons.conf.idx),
+#    log_euribor3m = log(euribor3m),
+#    log_nr.employed = log(nr.employed)
+#  )
+#
+#log_pair_data <- bank_log %>%
+#  dplyr::select(all_of(c(response, log_cont_predictors)))
+#
+#ggpairs(log_pair_data, mapping = aes(color = .data[[response]]))
+
+
+
+###-----------------Didn't find anything from polynomial - Comment out for now---------------------###
+###Polynomial the Columns just to look
+#bank_poly <- bank %>%
+#  dplyr::mutate(
+#    poly_age = age^2,
+#    poly_duration = duration^2,
+#    poly_campaign = campaign^2,
+#    poly_pdays = pdays^2,
+#    poly_previous = previous^2,
+#    poly_emp.var.rate = emp.var.rate^2,
+#    poly_cons.price.idx = cons.price.idx^2,
+#    poly_cons.conf.idx = cons.conf.idx^2,
+#    poly_euribor3m = euribor3m^2,
+#    poly_nr.employed = nr.employed^2
+#  )
+#
+#poly_pair_data <- bank_poly %>%
+#  dplyr::select(all_of(c(response, poly_cont_predictors)))
+#
+#ggpairs(poly_pair_data,mapping = aes(color = .data[[response]]))
+```
+
+
+# Objective 1: Simple Multiple Logistic Regression Model
+```{r simple_mlr, echo=F, message=F, warning=F}
+library(caret)
+library(pROC)
+library(dplyr)
+
+bank <- bank %>% 
+  #dplyr::select(-response_num) %>% 
+  dplyr::mutate(log_duration = log(duration+1))
+
+set.seed(123)
+
+#Log(+1 Duration), binned campaign, contact, month, poutcome, job, education, cons.conf.idx, binned ibor
+
+#Setup model
+bank$y = factor(bank$y, levels = c("no", "yes"))
+mlr_model <- glm(y ~ log_duration + month + poutcome + job + cons.conf.idx + euribor3m_cat+ cons.price.idx, data = bank, family = binomial)
+prob_yes <- predict(mlr_model, type = "response")
+
+#AUROC Curve
+#roc_obj <- roc(response = bank$y, predictor = prob_yes)
+roc_obj <- roc(response = bank$y, predictor = prob_yes, levels = c("no", "yes"), direction = "<")
+plot(roc_obj)
+
+#Best threshold (Youden’s J index)
+coords(roc_obj, "best", ret = "threshold")
+threshold <- 0.116
+
+#Confusion Matrix
+predicted_class <- factor(ifelse(prob_yes > threshold, "yes", "no"), levels = c("yes", "no"))
+cm<-confusionMatrix(predicted_class, bank$y, positive = "yes")
+cm
+
+#AIC
+AIC(mlr_model)
+
+#Summary
+log_odds <- coef(summary(mlr_model))
+odds_ratio <-exp(coef(mlr_model))
+
+results <- cbind(log_odds, odds_ratio)
+results <- round(results, 4)
+results
+```
+
+# Objective 2: Build four (4) models
+
+## Complex Multiple Logistic Regression
+```{r complex_mlr, echo=F, message=F, warning=F}
+#Eric is doing this one.... ignore for now
+```
+
+
+## Linear Deterministic Analysis
+```{r lda_model, echo=F, message=F, warning=F}
+library(MASS)
+library(caret)
+library(pROC)
+library(dplyr)
+library(corrplot)
+library(GGally)
+
+set.seed(123)
+
+lda_data <- bank %>%
+  dplyr::select(-duration, -emp.var.rate, -pdays, -log_duration)
+
+#Scale numeric predictors to handle high dimensionality and ensure comparability
+lda_numeric_cols <- lda_data %>% dplyr::select(where(is.numeric))
+lda_scaled_numeric <- as.data.frame(scale(lda_numeric_cols))
+lda_bank_scaled <- bind_cols(lda_scaled_numeric, y = bank$y)
+
+#Check Correlations since they have to be MVN and not correlated, there are not any MVN with good separation in this dataset, LDA is likely not appropriate to use here.
+#ggpairs(lda_bank_scaled, aes(color=y))
+corrplot(cor(lda_scaled_numeric), method = "color", tl.cex = 0.7)
+
+#Model
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=twoClassSummary)
+
+#LDA less highly correlated factors and duration
+lda.fit<-train(y~ age + campaign + euribor3m + nr.employed,
+               data=lda_bank_scaled,
+               method="lda",
+               trControl=fitControl,
+               metric="ROC")
+summary(lda.fit)
+lda.fit
+
+
+#Computing predicted probabilities on the training data
+lda.predictions <- predict(lda.fit, newdata = lda_bank_scaled, type = "prob")[,"yes"]
+
+#AUROC Curve
+lda_roc_obj <- roc(lda_bank_scaled$y, lda.predictions, levels = c("no", "yes"))
+plot(lda_roc_obj)
+
+#Best threshold (Youden’s J index)
+coords(lda_roc_obj, "best", ret = "threshold")
+threshold <- coords(lda_roc_obj, "best", ret = "threshold")[[1]]
+
+#Confusion Matrix
+lda_predicted_class <- factor(ifelse(lda.predictions > threshold, "yes", "no"), levels = c("yes", "no"))
+confusionMatrix(lda_predicted_class, lda_bank_scaled$y, positive = "yes")
+
+```
+
+
+## Quadratic Deterministic Analysis
+```{r qda_model, echo=F, message=F, warning=F}
+library(MASS)
+library(caret)
+library(pROC)
+library(dplyr)
+library(corrplot)
+library(GGally)
+
+set.seed(123)
+
+qda_data <- bank %>%
+  dplyr::select(-duration, -emp.var.rate, -pdays, -log_duration)
+
+#Scale numeric predictors to handle high dimensionality and ensure comparability
+qda_numeric_cols <- qda_data %>% dplyr::select(where(is.numeric))
+qda_scaled_numeric <- as.data.frame(scale(qda_numeric_cols))
+qda_bank_scaled <- bind_cols(qda_scaled_numeric, y = bank$y)
+
+#Model
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=twoClassSummary)
+
+#QDA, no variables really meet the criteria of multivariate normal, but the three included in lda are the closest, continue with same in QDA
+qda.fit<-train(y ~ age + campaign + euribor3m + nr.employed,
+               data=qda_bank_scaled,
+               method="qda",
+               trControl=fitControl,
+               metric="ROC")
+summary(qda.fit)
+qda.fit
+
+#Computing predicted probabilities on the training data
+qda.predictions <- predict(qda.fit, newdata = qda_bank_scaled, type = "prob")[,"yes"]
+
+#AUROC Curve
+qda_roc_obj <- roc(qda_bank_scaled$y, qda.predictions, levels = c("no", "yes"))
+plot(qda_roc_obj)
+
+#Best threshold (Youden’s J index)
+coords(qda_roc_obj, "best", ret = "threshold")
+threshold <- coords(qda_roc_obj, "best", ret = "threshold")[[1]]
+
+#Confusion Matrix
+qda_predicted_class <- factor(ifelse(qda.predictions > threshold, "yes", "no"), levels = c("yes", "no"))
+confusionMatrix(qda_predicted_class, qda_bank_scaled$y, positive = "yes")
+```
+
+
+## Non-Parametric Model
+```{r non-parametric, echo = FALSE, warning = FALSE, message = FALSE} 
+library(randomForest)
+library(tidyverse)
+library(caret)
+library(dplyr)
+library(pROC)
+
+set.seed(123)
+
+#Reset data table
+rf_bank <- read.csv(link2, header =TRUE, sep=";")
+rf_bank <- rf_bank %>% dplyr::select(-duration) %>%  mutate(across(where(is.character), as.factor))
+
+#Train Control
+fitControl <- trainControl(method = "repeatedcv", number = 5, repeats = 1, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+#Model
+rf.fit <- train(y ~ ., data = rf_bank, 
+                method = "rf", 
+                trControl = fitControl, 
+                metric = "ROC",
+                ntree=100)
+summary(rf.fit)
+rf.fit
+var_imp <- varImp(rf.fit)
+plot(var_imp, top = 20, main = "Variable Importance")
+
+#Predict probabilities (on validation set)
+rf.predictions <- predict(rf.fit, rf_bank, type = "prob")[,"yes"]
+
+
+#AUROC Curve
+rf_roc_obj <- roc(rf_bank$y, rf.predictions, levels = c("no", "yes"))
+plot(rf_roc_obj)
+
+#Best threshold (Youden’s J index)
+coords(rf_roc_obj, "best", ret = "threshold")
+threshold <- coords(rf_roc_obj, "best", ret = "threshold")[[1]]
+
+#Confusion Matrix
+rf_predicted_class <- factor(ifelse(rf.predictions > threshold, "yes", "no"), levels = c("yes", "no"))
+confusionMatrix(rf_predicted_class, rf_bank$y, positive = "yes")
+```
+
+
+# Model Summary
+
+```{r all_combined_roc, message = F, warning = F}
+library(pROC)
+plot(roc_obj, col = "blue")
+#ADD IN THE COMPLEX MULTIPLE LOGISTIC
+lines(lda_roc_obj, col = "green")
+lines(qda_roc_obj, col = "red")
+lines(rf_roc_obj, col = "purple")
+
+legend("bottomright", 
+       legend = c("Multiple Logistic - Simple", "LDA", "QDA", "Random Forest"),
+       col = c("blue", "green", "red", "purple"),
+       lwd = 2)
+```
+
+
+Data Source Citation: 
+
+  [Moro et al., 2011] S. Moro, R. Laureano and P. Cortez. Using Data Mining for Bank Direct Marketing: An Application of the CRISP-DM Methodology. 
+  In P. Novais et al. (Eds.), Proceedings of the European Simulation and Modelling Conference - ESM'2011, pp. 117-121, Guimarães, Portugal, October, 2011. EUROSIS.
+
